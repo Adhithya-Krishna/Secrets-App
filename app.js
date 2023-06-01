@@ -1,10 +1,11 @@
-//jshint esversion:6
+
 require('dotenv').config()
 const express = require('express');
 const ejs = require('ejs');
 const mongoose = require('mongoose');
-// const encrypt = require('mongoose-encryption'); // ENCRYPTION
-const md5 = require('md5');
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
+
 
 const app = express();
 
@@ -13,18 +14,15 @@ app.set('view engine','ejs');
 app.use(express.urlencoded({extended:true}));
 
 
-main().catch(err => console.log(err));
+main().catch(console.error);
 
 async function main() {
   await mongoose.connect('mongodb://127.0.0.1:27017/userDB');
-    // use `await mongoose.connect('mongodb://user:password@127.0.0.1:27017/test');` if your database has auth enabled
+    
     const userSchema = new mongoose.Schema({
         email:String,
         password:String
     });
-    
-    // Encryption AES 256
-    // userSchema.plugin(encrypt,{secret:process.env.SECRET,encryptedFields:['password']});
 
     const User = mongoose.model('User',userSchema);
 
@@ -38,9 +36,10 @@ async function main() {
 
     app.post("/register",async(req,res)=>{
         try {
+            const hash = await bcrypt.hash(req.body.password, saltRounds);
             const newUser = new User({
                 email:req.body.username,
-                password:md5(req.body.password)
+                password:hash
             });
             const result = await newUser.save();
             if(result){
@@ -60,15 +59,16 @@ async function main() {
     
     app.post("/login",async(req,res)=>{
         const username = req.body.username;
-        const password = md5(req.body.password);
+        const password = req.body.password;
 
         try {
-            const foundName = await User.findOne({email:username})
-            if(foundName){
-                if(foundName.password===password){
-                    res.render('secrets');
+            const foundUser = await User.findOne({email:username})
+            if(foundUser){
+                const result = await bcrypt.compare(password,foundUser.password);
+                if(result){
+                    res.render('secrets')
                 }else{
-                    console.log('Password Does not Match...Try Again !')
+                    console.log("Password does not Match!")
                 }
             }else{
                 console.log("User Not found...")
